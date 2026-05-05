@@ -157,7 +157,11 @@ h1 {
   border: 2px solid;
   border-color: #808080 #ffffff #ffffff #808080;
   font-weight: bold;
-  cursor: default;
+  cursor: pointer; /* clickable to rescramble everything */
+}
+
+.root-node:hover {
+  background: #d4d0c8;
 }
 
 button.word-node {
