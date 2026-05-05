@@ -376,7 +376,6 @@ async function expandNode(id) {
   } catch (err) {
     node.el.textContent = orig;
     node.expanded = false;
-    showError('API error: ' + err.message);
   }
 }
 
@@ -438,7 +437,6 @@ async function rescrambleNode(id) {
     node.rescrambling = false;
 
   } catch (err) {
-    // Restore display text on failure
     node.el.textContent = orig;
     descendants.forEach(nid => {
       const n = nodes.get(nid);
@@ -448,7 +446,6 @@ async function rescrambleNode(id) {
       }
     });
     node.rescrambling = false;
-    showError('API error: ' + err.message);
   }
 }
 
