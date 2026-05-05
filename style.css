@@ -54,40 +54,6 @@ h1 {
   border-color: #808080 #dfdfdf #dfdfdf #808080;
 }
 
-/* ── API key row ── */
-
-.api-key-row {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 6px;
-  margin-top: 14px;
-}
-
-.api-key-row label {
-  font-size: 11px;
-  color: #000;
-  white-space: nowrap;
-}
-
-#api-key-input {
-  font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
-  font-size: 11px;
-  padding: 3px 5px;
-  width: 210px;
-  background: #fff;
-  color: #000;
-  outline: none;
-  border: 2px solid;
-  border-color: #808080 #dfdfdf #dfdfdf #808080;
-}
-
-.api-key-note {
-  margin-top: 7px;
-  font-size: 10px;
-  color: #808080;
-  text-align: center;
-}
 
 /* ── Win98 raised button ── */
 

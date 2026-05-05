@@ -1,7 +1,8 @@
-const promptArea     = document.getElementById('prompt-area');
-const wordInput      = document.getElementById('word-input');
-const apiKeyInput    = document.getElementById('api-key-input');
-const submitBtn      = document.getElementById('submit-btn');
+const WORKER_URL = 'https://desireproxy.markc6820.workers.dev';
+
+const promptArea = document.getElementById('prompt-area');
+const wordInput  = document.getElementById('word-input');
+const submitBtn  = document.getElementById('submit-btn');
 const container      = document.getElementById('chart-container');
 const svg            = document.getElementById('lines-svg');
 const dialogOverlay  = document.getElementById('dialog-overlay');
@@ -23,9 +24,8 @@ const DEAD_END_CHANCE = 1 / 11;   // per-word, expand only
 const nodes     = new Map();
 const wordLinks = new Map();
 
-let nextId        = 0;
-let apiKey        = '';
-let canvasW       = 0;
+let nextId  = 0;
+let canvasW = 0;
 let canvasH       = 0;
 let firstLinkMade = false;
 
@@ -269,14 +269,9 @@ function getAncestorWords(nodeId) {
 // ── Claude API ────────────────────────────────────────────────────────────────
 
 async function anthropicPost(body) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch(WORKER_URL, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
@@ -571,19 +566,15 @@ function startChart(word) {
 
 function handleSubmit() {
   const word = wordInput.value.trim();
-  const key  = apiKeyInput.value.trim();
   if (!/^[a-zA-Z]+$/.test(word)) {
     showError(word.length === 0 ? 'Please enter a word before clicking OK.' : 'Only letters allowed — no spaces, numbers, or symbols.');
     return;
   }
-  if (!key) { showError('Please enter your Anthropic API key.'); return; }
-  apiKey = key;
   startChart(word);
 }
 
 submitBtn.addEventListener('click', handleSubmit);
-wordInput.addEventListener('keydown',   e => { if (e.key === 'Enter') handleSubmit(); });
-apiKeyInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit(); });
+wordInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit(); });
 
 // ── Error dialog ──────────────────────────────────────────────────────────────
 
