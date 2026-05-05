@@ -324,7 +324,7 @@ async function fetchBranches(word, ancestorWords = []) {
 async function fetchRescrambledTree(tree, rootWord) {
   const data = await anthropicPost({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 1500,
+    max_tokens: 3000,
     messages: [{
       role: 'user',
       content:
