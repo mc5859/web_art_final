@@ -43,16 +43,28 @@ h1 {
   gap: 6px;
 }
 
-#word-input {
+#word-input,
+#key-input {
   font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
   font-size: 11px;
   padding: 3px 5px;
-  width: 170px;
   background: #fff;
   color: #000;
   outline: none;
   border: 2px solid;
   border-color: #808080 #dfdfdf #dfdfdf #808080;
+}
+
+#word-input {
+  width: 170px;
+}
+
+#key-input {
+  width: 240px;
+}
+
+#key-row {
+  margin-bottom: 8px;
 }
 
 
