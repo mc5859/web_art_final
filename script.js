@@ -12,14 +12,16 @@ const dialogCloseBtn = document.getElementById('dialog-close-btn');
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const NODE_W   = 100;  // node element width (px)
-const NODE_H   = 28;   // node element height (px)
-const V_GAP    = 55;   // vertical distance between parent top and child top
-const H_SPREAD = 80;   // horizontal offset from parent center to each child center
+const NODE_W   = 100;
+const NODE_H   = 28;
+const V_GAP    = 55;
+const H_SPREAD = 80;
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-const nodes = new Map();   // id → node object
+const nodes     = new Map();   // id → node object
+const wordLinks = new Map();   // `${minId}-${maxId}` → SVG <line> element
+
 let nextId  = 0;
 let apiKey  = '';
 let canvasW = 0;
@@ -47,7 +49,6 @@ function findFreePosition(idealCx, idealCy) {
   const start = clampToCanvas(idealCx, idealCy);
   if (!hasOverlap(start.cx, start.cy)) return start;
 
-  // Spiral outward from ideal position until a free spot is found
   for (let r = 18; r <= 500; r += 18) {
     for (let deg = 0; deg < 360; deg += 12) {
       const rad = deg * Math.PI / 180;
@@ -59,54 +60,147 @@ function findFreePosition(idealCx, idealCy) {
     }
   }
 
-  return start; // canvas is full — place anyway
+  return start; // canvas full — place anyway
 }
 
-// ── SVG connector ─────────────────────────────────────────────────────────────
+// ── SVG: tree connectors ──────────────────────────────────────────────────────
 
-function drawConnector(parent, child) {
+function drawConnector(parent, childCx, childCy) {
   const x1 = parent.cx,  y1 = parent.cy + NODE_H;
-  const x2 = child.cx,   y2 = child.cy;
+  const x2 = childCx,    y2 = childCy;
   const my = (y1 + y2) / 2;
 
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`);
   path.setAttribute('class', 'connector-line');
   svg.appendChild(path);
+  return path;
 }
 
-// ── Node creation ─────────────────────────────────────────────────────────────
+// ── SVG: dotted word-match links ──────────────────────────────────────────────
+
+function drawWordLink(nodeA, nodeB) {
+  const key = `${Math.min(nodeA.id, nodeB.id)}-${Math.max(nodeA.id, nodeB.id)}`;
+  if (wordLinks.has(key)) return;
+
+  const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+  line.setAttribute('x1', nodeA.cx);
+  line.setAttribute('y1', nodeA.cy + NODE_H / 2);
+  line.setAttribute('x2', nodeB.cx);
+  line.setAttribute('y2', nodeB.cy + NODE_H / 2);
+  line.setAttribute('class', 'word-link-line');
+  // Insert behind tree lines
+  svg.insertBefore(line, svg.firstChild);
+  wordLinks.set(key, line);
+}
+
+function removeWordLinksForNode(id) {
+  for (const [key, el] of wordLinks) {
+    const [a, b] = key.split('-').map(Number);
+    if (a === id || b === id) {
+      el.remove();
+      wordLinks.delete(key);
+    }
+  }
+}
+
+function checkWordLinks(newNode) {
+  const word = newNode.word.toLowerCase();
+  for (const n of nodes.values()) {
+    if (n.id !== newNode.id && n.word.toLowerCase() === word) {
+      drawWordLink(n, newNode);
+    }
+  }
+}
+
+// ── Node lifecycle ────────────────────────────────────────────────────────────
 
 function createNode(word, parentId, idealCx, idealCy) {
-  const isRoot   = parentId === null;
+  const isRoot     = parentId === null;
   const { cx, cy } = isRoot
     ? clampToCanvas(idealCx, idealCy)
     : findFreePosition(idealCx, idealCy);
 
   const id = nextId++;
+
   const el = document.createElement(isRoot ? 'div' : 'button');
   el.className   = isRoot ? 'word-node root-node' : 'word-node';
   el.textContent = word;
   el.style.left  = (cx - NODE_W / 2) + 'px';
   el.style.top   = cy + 'px';
   el.style.width = NODE_W + 'px';
-
   container.appendChild(el);
 
-  const node = { id, word, parentId, cx, cy, el, expanded: false };
-  nodes.set(id, node);
-
+  let connectorPath = null;
   if (!isRoot) {
-    drawConnector(nodes.get(parentId), node);
-    el.addEventListener('click', () => expandNode(id));
+    connectorPath = drawConnector(nodes.get(parentId), cx, cy);
+    el.addEventListener('click', () => handleNodeClick(id));
   }
 
+  const node = {
+    id, word, parentId,
+    children: [],
+    cx, cy, el,
+    expanded:     false,
+    rescrambling: false,
+    connectorPath,
+  };
+  nodes.set(id, node);
+
+  if (parentId !== null) {
+    nodes.get(parentId).children.push(id);
+  }
+
+  checkWordLinks(node);
   return node;
+}
+
+// Recursively remove all descendants of nodeId (not nodeId itself)
+function removeDescendants(nodeId) {
+  const node = nodes.get(nodeId);
+  if (!node) return;
+
+  for (const childId of [...node.children]) {
+    removeDescendants(childId);
+
+    const child = nodes.get(childId);
+    if (!child) continue;
+
+    removeWordLinksForNode(childId);
+    if (child.connectorPath) child.connectorPath.remove();
+    child.el.remove();
+    nodes.delete(childId);
+  }
+
+  node.children  = [];
+  node.expanded  = false;
+}
+
+// ── Click handling ────────────────────────────────────────────────────────────
+
+function handleNodeClick(id) {
+  const node = nodes.get(id);
+  if (!node || node.rescrambling) return;
+
+  if (!node.expanded) {
+    expandNode(id);
+  } else {
+    rescrambleNode(id);
+  }
 }
 
 // ── Claude API ────────────────────────────────────────────────────────────────
 
+function getUsedWords() {
+  return [...nodes.values()].map(n => n.word.toLowerCase());
+}
+
 async function fetchBranches(word) {
+  const used = getUsedWords();
+  const avoidHint = used.length > 2
+    ? ` Try to use words not already in the chart: ${used.join(', ')}.`
+    : '';
+
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -121,11 +215,18 @@ async function fetchBranches(word) {
       messages: [{
         role: 'user',
         content:
-          `The word is "${word}". ` +
-          `Give me exactly 2 words that are specific sub-types or varieties of it — ` +
-          `as if answering "What kind of ${word}?" or "What type of ${word}?". ` +
-          `Single English words only. Evocative and specific. Not antonyms. ` +
-          `Reply with ONLY a JSON array, e.g. ["word1","word2"]`,
+          `You are helping build a philosophical flowchart about desire. ` +
+          `The concept: someone tries to clarify what they want by asking "What kind of X?" infinitely — ` +
+          `never arriving at a clear answer.\n\n` +
+          `Word: "${word}"\n\n` +
+          `Give exactly 2 words that are intuitive, natural sub-types of "${word}", ` +
+          `as if answering "What kind of ${word}?" The words should be:\n` +
+          `- Simple, common English words\n` +
+          `- Easy to understand as sub-categories\n` +
+          `- Slightly intriguing or evocative\n` +
+          `- Different from each other\n` +
+          avoidHint + `\n\n` +
+          `Reply with ONLY a JSON array: ["word1","word2"]`,
       }],
     }),
   });
@@ -141,17 +242,18 @@ async function fetchBranches(word) {
   if (!match) throw new Error('Unexpected response from API.');
 
   const words = JSON.parse(match[0]);
-  return words.filter(w => typeof w === 'string' && /^[a-zA-Z]+$/.test(w)).slice(0, 2);
+  return words
+    .filter(w => typeof w === 'string' && /^[a-zA-Z]+$/.test(w))
+    .slice(0, 2);
 }
 
-// ── Expand node ───────────────────────────────────────────────────────────────
+// ── Expand (first click) ──────────────────────────────────────────────────────
 
 async function expandNode(id) {
   const node = nodes.get(id);
-  if (node.expanded) return;
-  node.expanded = true;
+  if (node.expanded || node.rescrambling) return;
+  node.expanded = true; // lock immediately to prevent double-click
 
-  // Show loading without changing button appearance
   const orig = node.word;
   node.el.textContent = orig + '…';
 
@@ -161,7 +263,7 @@ async function expandNode(id) {
 
     if (words.length < 2) {
       node.expanded = false;
-      showError('Couldn\'t generate branches — please try again.');
+      showError('Couldn\'t generate branches — please try clicking again.');
       return;
     }
 
@@ -175,28 +277,61 @@ async function expandNode(id) {
   }
 }
 
+// ── Rescramble (re-click an expanded node) ────────────────────────────────────
+
+async function rescrambleNode(id) {
+  const node = nodes.get(id);
+  if (!node || !node.expanded || node.rescrambling) return;
+  node.rescrambling = true;
+
+  const orig = node.word;
+  node.el.textContent = orig + '…';
+
+  try {
+    const words = await fetchBranches(node.word);
+    node.el.textContent = orig;
+
+    if (words.length < 2) {
+      node.rescrambling = false;
+      showError('Couldn\'t generate new branches — please try again.');
+      return;
+    }
+
+    // Tear down everything below this node
+    removeDescendants(id);
+
+    // Plant fresh children
+    createNode(words[0], id, node.cx - H_SPREAD, node.cy + V_GAP);
+    createNode(words[1], id, node.cx + H_SPREAD, node.cy + V_GAP);
+
+    node.expanded     = true;
+    node.rescrambling = false;
+
+  } catch (err) {
+    node.el.textContent = orig;
+    node.rescrambling = false;
+    showError('API error: ' + err.message);
+  }
+}
+
 // ── Start chart ───────────────────────────────────────────────────────────────
 
 function startChart(word) {
-  // Lock canvas to current viewport dimensions
   canvasW = window.innerWidth;
   canvasH = window.innerHeight;
 
-  // Fade out and hide the prompt screen
   promptArea.style.opacity = '0';
   setTimeout(() => { promptArea.style.display = 'none'; }, 400);
 
-  // Reveal chart container at exact viewport size
-  container.style.display  = 'block';
-  container.style.width    = canvasW + 'px';
-  container.style.height   = canvasH + 'px';
+  container.style.display = 'block';
+  container.style.width   = canvasW + 'px';
+  container.style.height  = canvasH + 'px';
 
   svg.setAttribute('width',  canvasW);
   svg.setAttribute('height', canvasH);
   svg.style.width  = canvasW + 'px';
   svg.style.height = canvasH + 'px';
 
-  // Root at top-center, auto-expand immediately
   const root = createNode(word, null, canvasW / 2, 50);
   expandNode(root.id);
 }

@@ -191,6 +191,14 @@ button.word-node:active {
   stroke-width: 1;
 }
 
+/* Dotted line connecting two nodes that share the same word */
+.word-link-line {
+  stroke: #000080;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  opacity: 0.65;
+}
+
 /* ── Win98 error dialog ── */
 
 #dialog-overlay {
