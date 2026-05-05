@@ -38,6 +38,19 @@ function getAudioCtx() {
   return audioCtx;
 }
 
+// Fade rain in slowly after chart starts
+function fadeInRain() {
+  const audio = document.getElementById('rain-audio');
+  if (!audio) return;
+  audio.volume = 0;
+  audio.play().catch(() => {}); // silently skip if browser blocks autoplay
+  const TARGET = 0.28;
+  const id = setInterval(() => {
+    if (audio.volume >= TARGET) { clearInterval(id); return; }
+    audio.volume = Math.min(audio.volume + 0.004, TARGET);
+  }, 120); // reaches 0.28 over ~8 seconds
+}
+
 // Soft muffled thump on node click
 function playThump() {
   try {
@@ -291,10 +304,11 @@ async function fetchBranches(word, ancestorWords = []) {
         `Word: "${word}"\n\n` +
         `Give exactly 2 words that are intuitive, natural sub-types of "${word}", ` +
         `as if answering "What kind of ${word}?" The words should be:\n` +
-        `- Simple, common English words\n` +
-        `- Easy to understand as sub-categories\n` +
-        `- Slightly intriguing or evocative\n` +
-        `- Different from each other` +
+        `- Simple English words (common or slightly uncommon)\n` +
+        `- Clearly connected to "${word}" but with a hint of surprise — ` +
+        `like you'd never have thought of them but once you see them, they make perfect sense\n` +
+        `- Lean about 20% toward the unexpected or poetic over the obvious choice\n` +
+        `- Different from each other — one can be straightforward, one more surprising` +
         avoidLine + `\n\n` +
         `Reply with ONLY a JSON array: ["word1","word2"]`,
     }],
@@ -481,28 +495,28 @@ function animateScan() {
   });
 }
 
-async function buildSentence(dupWords) {
-  const leafWords = [...nodes.values()]
-    .filter(n => n.children.length === 0 && n.parentId !== null && !n.isDeadEnd)
-    .map(n => n.word.toLowerCase());
-  const otherWords = [...new Set(leafWords.filter(w => !dupWords.includes(w)))];
+// Build the sentence purely from word frequency — no API call, no AI polish
+function buildSentence() {
+  const rootNode = nodes.get([...nodes.keys()][0]);
+  const rootWord = rootNode ? rootNode.word.toLowerCase() : 'it';
 
-  const data = await anthropicPost({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 70,
-    messages: [{
-      role: 'user',
-      content:
-        `Someone's been clicking through a desire flowchart. ` +
-        `These words keep coming back: ${dupWords.join(', ')}.\n` +
-        (otherWords.length ? `They also touched: ${otherWords.join(', ')}.\n` : '') +
-        `\nWrite one line starting with "I want". ` +
-        `Make it raw and personal, like something texted at 2am. ` +
-        `Bad grammar is fine. Crude is good. Contradictions welcome. ` +
-        `Use the recurring words. Under 20 words.`,
-    }],
-  });
-  return data.content[0].text.trim();
+  const counts = new Map();
+  for (const n of nodes.values()) {
+    if (n.isDeadEnd) continue;
+    const w = n.word.toLowerCase();
+    if (w === rootWord) continue;
+    counts.set(w, (counts.get(w) || 0) + 1);
+  }
+
+  // Sort by frequency descending, take up to 6
+  const words = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([w]) => w)
+    .slice(0, 6);
+
+  if (words.length === 0) return `I want ${rootWord}.`;
+  if (words.length === 1) return `I want ${rootWord} that is ${words[0]}.`;
+  return `I want ${rootWord} that is ${words.join(' and ')}.`;
 }
 
 async function handleSatisfied() {
@@ -511,22 +525,11 @@ async function handleSatisfied() {
   btn.disabled    = true;
 
   try {
-    const dupWords = getDuplicateWords();
-
-    let sentence;
-    if (wordLinks.size === 1) {
-      const firstKey = [...wordLinks.keys()][0];
-      const word     = nodes.get(parseInt(firstKey.split('-')[0], 10))?.word || dupWords[0] || 'it';
-      await animateScan();
-      sentence = `I want ${word} love.`;
-    } else {
-      const [s] = await Promise.all([buildSentence(dupWords), animateScan()]);
-      sentence = s;
-    }
-
+    const sentence = buildSentence();
+    await animateScan();
     window.alert(sentence);
   } catch (err) {
-    showError('API error: ' + err.message);
+    showError('Something went wrong.');
   } finally {
     btn.textContent = 'I know what I want →';
     btn.disabled    = false;
@@ -558,6 +561,7 @@ function startChart(word) {
   svg.style.width = canvasW + 'px';   svg.style.height = canvasH + 'px';
 
   addSatisfiedButton();
+  fadeInRain();
 
   const root = createNode(word, null, canvasW / 2, 50);
   expandNode(root.id);
