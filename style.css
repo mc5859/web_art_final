@@ -10,22 +10,22 @@ body {
   font-size: 11px;
   color: #000;
   min-height: 100vh;
-  overflow-x: auto;
+  overflow: hidden;
 }
 
 /* ── Prompt area ── */
 
 #prompt-area {
-  text-align: center;
-  padding: 48px 20px 36px;
-  transition: opacity 0.4s ease;
-  position: relative;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
   z-index: 10;
-}
-
-#prompt-area.submitted {
-  opacity: 0.45;
-  pointer-events: none;
+  background: #f5f0d8;
+  transition: opacity 0.4s ease;
 }
 
 h1 {
@@ -51,14 +51,43 @@ h1 {
   background: #fff;
   color: #000;
   outline: none;
-  /* Win98 sunken/inset border */
   border: 2px solid;
   border-color: #808080 #dfdfdf #dfdfdf #808080;
 }
 
-#word-input:disabled {
-  background: #c0c0c0;
+/* ── API key row ── */
+
+.api-key-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.api-key-row label {
+  font-size: 11px;
+  color: #000;
+  white-space: nowrap;
+}
+
+#api-key-input {
+  font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  padding: 3px 5px;
+  width: 210px;
+  background: #fff;
+  color: #000;
+  outline: none;
+  border: 2px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+}
+
+.api-key-note {
+  margin-top: 7px;
+  font-size: 10px;
   color: #808080;
+  text-align: center;
 }
 
 /* ── Win98 raised button ── */
@@ -73,7 +102,6 @@ h1 {
   cursor: pointer;
   border: 2px solid;
   border-color: #ffffff #808080 #808080 #ffffff;
-  /* outer dark shadow */
   box-shadow: 1px 1px 0 #000;
   user-select: none;
 }
@@ -84,18 +112,15 @@ h1 {
   padding: 4px 13px 2px 15px;
 }
 
-.win98-btn:disabled {
-  color: #808080;
-  cursor: default;
-}
-
-/* ── Chart container ── */
+/* ── Chart container (sized + fixed by JS on submit) ── */
 
 #chart-container {
-  position: relative;
-  /* JS sets width/height dynamically */
-  min-width: 100vw;
-  min-height: 300px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  /* width/height set by JS */
+  overflow: hidden;
+  display: none; /* shown by JS */
 }
 
 #lines-svg {
@@ -103,7 +128,6 @@ h1 {
   top: 0;
   left: 0;
   pointer-events: none;
-  overflow: visible;
 }
 
 /* ── Word nodes ── */
@@ -111,8 +135,6 @@ h1 {
 .word-node {
   position: absolute;
   height: 28px;
-  min-width: 90px;
-  max-width: 150px;
   padding: 0 10px;
   display: flex;
   align-items: center;
@@ -123,16 +145,15 @@ h1 {
   font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
   font-size: 11px;
   color: #000;
-  /* fade in */
-  animation: nodeAppear 0.18s ease-in both;
+  animation: nodeAppear 0.15s ease-in both;
 }
 
 @keyframes nodeAppear {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-/* Root node: displayed as a sunken (inset) panel */
+/* Root node: sunken panel */
 .root-node {
   background: #c0c0c0;
   border: 2px solid;
@@ -141,7 +162,7 @@ h1 {
   cursor: default;
 }
 
-/* Child nodes: raised clickable buttons */
+/* Child nodes: always-raised buttons, no click state shown */
 button.word-node {
   background: #c0c0c0;
   border: 2px solid;
@@ -150,24 +171,16 @@ button.word-node {
   cursor: pointer;
 }
 
-button.word-node:hover:not(:disabled) {
+button.word-node:hover {
   background: #d4d0c8;
 }
 
-button.word-node:active:not(:disabled) {
+/* Active press feel only while physically holding down */
+button.word-node:active {
   border-color: #808080 #ffffff #ffffff #808080;
   box-shadow: none;
   padding-top: 1px;
   padding-left: 11px;
-}
-
-button.word-node:disabled,
-button.word-node.expanded {
-  border-color: #808080 #ffffff #ffffff #808080;
-  box-shadow: none;
-  color: #808080;
-  cursor: default;
-  background: #c0c0c0;
 }
 
 /* ── SVG connector lines ── */
@@ -184,7 +197,6 @@ button.word-node.expanded {
   position: fixed;
   inset: 0;
   z-index: 900;
-  /* transparent click-catcher */
 }
 
 .win98-dialog {

@@ -1,60 +1,72 @@
-const promptArea = document.getElementById('prompt-area');
-const wordInput  = document.getElementById('word-input');
-const submitBtn  = document.getElementById('submit-btn');
-const container  = document.getElementById('chart-container');
-const svg        = document.getElementById('lines-svg');
-
-const dialogOverlay = document.getElementById('dialog-overlay');
-const errorDialog   = document.getElementById('error-dialog');
-const dialogMsg     = document.getElementById('dialog-message');
-const dialogOkBtn   = document.getElementById('dialog-ok-btn');
+const promptArea     = document.getElementById('prompt-area');
+const wordInput      = document.getElementById('word-input');
+const apiKeyInput    = document.getElementById('api-key-input');
+const submitBtn      = document.getElementById('submit-btn');
+const container      = document.getElementById('chart-container');
+const svg            = document.getElementById('lines-svg');
+const dialogOverlay  = document.getElementById('dialog-overlay');
+const errorDialog    = document.getElementById('error-dialog');
+const dialogMsg      = document.getElementById('dialog-message');
+const dialogOkBtn    = document.getElementById('dialog-ok-btn');
 const dialogCloseBtn = document.getElementById('dialog-close-btn');
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 
-const NODE_W   = 120;  // element width (px)
-const NODE_H   = 28;   // element height (px)
-const V_GAP    = 110;  // vertical distance between level tops
-const H_SPREAD = 165;  // horizontal offset from parent center to each child
+const NODE_W   = 100;  // node element width (px)
+const NODE_H   = 28;   // node element height (px)
+const V_GAP    = 55;   // vertical distance between parent top and child top
+const H_SPREAD = 80;   // horizontal offset from parent center to each child center
 
-// ── Node registry ─────────────────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────────────────────────
 
-const nodes = new Map();  // id → node object
-let nextId = 0;
+const nodes = new Map();   // id → node object
+let nextId  = 0;
+let apiKey  = '';
+let canvasW = 0;
+let canvasH = 0;
 
-// ── Datamuse API ──────────────────────────────────────────────────────────────
+// ── Collision detection ───────────────────────────────────────────────────────
 
-async function fetchRelatedWords(word) {
-  const base   = 'https://api.datamuse.com/words';
-  const clean  = encodeURIComponent(word.toLowerCase());
-  const isWord = w => /^[a-z]+$/i.test(w.word) && w.word.toLowerCase() !== word.toLowerCase();
-
-  // Primary: "triggered by" — thematically associated words
-  const r1   = await fetch(`${base}?rel_trg=${clean}&max=20`);
-  const d1   = await r1.json();
-  let words  = d1.filter(isWord).map(w => w.word.toLowerCase());
-
-  if (words.length < 2) {
-    // Fallback: "means like" — semantic synonyms
-    const r2  = await fetch(`${base}?ml=${clean}&max=20`);
-    const d2  = await r2.json();
-    const extra = d2.filter(isWord).map(w => w.word.toLowerCase());
-    words = [...new Set([...words, ...extra])];
+function hasOverlap(cx, cy) {
+  const padX = NODE_W + 6;
+  const padY = NODE_H + 6;
+  for (const n of nodes.values()) {
+    if (Math.abs(cx - n.cx) < padX && Math.abs(cy - n.cy) < padY) return true;
   }
-
-  // Deduplicate and return two
-  const unique = [...new Set(words)];
-  return unique.slice(0, 2);
+  return false;
 }
 
-// ── SVG connector lines ───────────────────────────────────────────────────────
+function clampToCanvas(cx, cy) {
+  return {
+    cx: Math.max(NODE_W / 2 + 4, Math.min(canvasW - NODE_W / 2 - 4, cx)),
+    cy: Math.max(4,               Math.min(canvasH - NODE_H - 4,     cy)),
+  };
+}
+
+function findFreePosition(idealCx, idealCy) {
+  const start = clampToCanvas(idealCx, idealCy);
+  if (!hasOverlap(start.cx, start.cy)) return start;
+
+  // Spiral outward from ideal position until a free spot is found
+  for (let r = 18; r <= 500; r += 18) {
+    for (let deg = 0; deg < 360; deg += 12) {
+      const rad = deg * Math.PI / 180;
+      const { cx, cy } = clampToCanvas(
+        idealCx + r * Math.cos(rad),
+        idealCy + r * Math.sin(rad)
+      );
+      if (!hasOverlap(cx, cy)) return { cx, cy };
+    }
+  }
+
+  return start; // canvas is full — place anyway
+}
+
+// ── SVG connector ─────────────────────────────────────────────────────────────
 
 function drawConnector(parent, child) {
-  // Cubic bezier: parent bottom-center → child top-center
-  const x1 = parent.cx;
-  const y1 = parent.cy + NODE_H;
-  const x2 = child.cx;
-  const y2 = child.cy;
+  const x1 = parent.cx,  y1 = parent.cy + NODE_H;
+  const x2 = child.cx,   y2 = child.cy;
   const my = (y1 + y2) / 2;
 
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -63,29 +75,15 @@ function drawConnector(parent, child) {
   svg.appendChild(path);
 }
 
-// ── Container / SVG sizing ────────────────────────────────────────────────────
-
-function updateCanvas() {
-  let maxRight = window.innerWidth;
-  let maxBottom = 300;
-
-  nodes.forEach(n => {
-    maxRight  = Math.max(maxRight,  n.cx + NODE_W / 2 + 60);
-    maxBottom = Math.max(maxBottom, n.cy + NODE_H + 80);
-  });
-
-  container.style.width  = maxRight + 'px';
-  container.style.height = maxBottom + 'px';
-  svg.setAttribute('width',  maxRight);
-  svg.setAttribute('height', maxBottom);
-}
-
 // ── Node creation ─────────────────────────────────────────────────────────────
 
-function createNode(word, parentId, cx, cy) {
-  const id   = nextId++;
-  const isRoot = parentId === null;
+function createNode(word, parentId, idealCx, idealCy) {
+  const isRoot   = parentId === null;
+  const { cx, cy } = isRoot
+    ? clampToCanvas(idealCx, idealCy)
+    : findFreePosition(idealCx, idealCy);
 
+  const id = nextId++;
   const el = document.createElement(isRoot ? 'div' : 'button');
   el.className   = isRoot ? 'word-node root-node' : 'word-node';
   el.textContent = word;
@@ -98,76 +96,108 @@ function createNode(word, parentId, cx, cy) {
   const node = { id, word, parentId, cx, cy, el, expanded: false };
   nodes.set(id, node);
 
-  if (parentId !== null) {
+  if (!isRoot) {
     drawConnector(nodes.get(parentId), node);
     el.addEventListener('click', () => expandNode(id));
   }
 
-  updateCanvas();
   return node;
 }
 
-// ── Expand a node (fetch children) ───────────────────────────────────────────
+// ── Claude API ────────────────────────────────────────────────────────────────
+
+async function fetchBranches(word) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 40,
+      messages: [{
+        role: 'user',
+        content:
+          `The word is "${word}". ` +
+          `Give me exactly 2 words that are specific sub-types or varieties of it — ` +
+          `as if answering "What kind of ${word}?" or "What type of ${word}?". ` +
+          `Single English words only. Evocative and specific. Not antonyms. ` +
+          `Reply with ONLY a JSON array, e.g. ["word1","word2"]`,
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${res.status}`);
+  }
+
+  const data  = await res.json();
+  const text  = data.content[0].text.trim();
+  const match = text.match(/\[.*?\]/s);
+  if (!match) throw new Error('Unexpected response from API.');
+
+  const words = JSON.parse(match[0]);
+  return words.filter(w => typeof w === 'string' && /^[a-zA-Z]+$/.test(w)).slice(0, 2);
+}
+
+// ── Expand node ───────────────────────────────────────────────────────────────
 
 async function expandNode(id) {
   const node = nodes.get(id);
   if (node.expanded) return;
   node.expanded = true;
 
-  node.el.disabled = true;
-  node.el.classList.add('expanded');
-  node.el.textContent = node.word + '…';  // ellipsis while loading
+  // Show loading without changing button appearance
+  const orig = node.word;
+  node.el.textContent = orig + '…';
 
   try {
-    const words = await fetchRelatedWords(node.word);
-
-    node.el.textContent = node.word;
+    const words = await fetchBranches(node.word);
+    node.el.textContent = orig;
 
     if (words.length < 2) {
-      // API returned too few results — show a soft fail state
-      node.el.textContent = node.word + ' (?)';
+      node.expanded = false;
+      showError('Couldn\'t generate branches — please try again.');
       return;
     }
 
-    const childCy = node.cy + V_GAP;
-
-    // Prevent left child from going off the left edge
-    let leftCx  = node.cx - H_SPREAD;
-    let rightCx = node.cx + H_SPREAD;
-    const minCx = NODE_W / 2 + 20;
-    if (leftCx < minCx) {
-      const shift = minCx - leftCx;
-      leftCx  += shift;
-      rightCx += shift;
-    }
-
-    createNode(words[0], id, leftCx,  childCy);
-    createNode(words[1], id, rightCx, childCy);
-
-    updateCanvas();
-    // Smoothly scroll to reveal new nodes
-    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+    createNode(words[0], id, node.cx - H_SPREAD, node.cy + V_GAP);
+    createNode(words[1], id, node.cx + H_SPREAD, node.cy + V_GAP);
 
   } catch (err) {
-    // Network error — let the user retry
-    node.el.textContent = node.word;
-    node.el.disabled  = false;
-    node.el.classList.remove('expanded');
+    node.el.textContent = orig;
     node.expanded = false;
+    showError('API error: ' + err.message);
   }
 }
 
-// ── Start the chart ───────────────────────────────────────────────────────────
+// ── Start chart ───────────────────────────────────────────────────────────────
 
 function startChart(word) {
-  promptArea.classList.add('submitted');
-  wordInput.disabled  = true;
-  submitBtn.disabled  = true;
+  // Lock canvas to current viewport dimensions
+  canvasW = window.innerWidth;
+  canvasH = window.innerHeight;
 
-  const rootCx = Math.max(window.innerWidth / 2, NODE_W / 2 + 20);
-  const rootCy = 40;
+  // Fade out and hide the prompt screen
+  promptArea.style.opacity = '0';
+  setTimeout(() => { promptArea.style.display = 'none'; }, 400);
 
-  const root = createNode(word, null, rootCx, rootCy);
+  // Reveal chart container at exact viewport size
+  container.style.display  = 'block';
+  container.style.width    = canvasW + 'px';
+  container.style.height   = canvasH + 'px';
+
+  svg.setAttribute('width',  canvasW);
+  svg.setAttribute('height', canvasH);
+  svg.style.width  = canvasW + 'px';
+  svg.style.height = canvasH + 'px';
+
+  // Root at top-center, auto-expand immediately
+  const root = createNode(word, null, canvasW / 2, 50);
   expandNode(root.id);
 }
 
@@ -175,23 +205,27 @@ function startChart(word) {
 
 function handleSubmit() {
   const word = wordInput.value.trim();
+  const key  = apiKeyInput.value.trim();
 
   if (!/^[a-zA-Z]+$/.test(word)) {
-    showError(
-      word.length === 0
-        ? 'Please enter a word before clicking OK.'
-        : 'Only letters are allowed — no spaces, numbers, or symbols.'
-    );
+    showError(word.length === 0
+      ? 'Please enter a word before clicking OK.'
+      : 'Only letters allowed — no spaces, numbers, or symbols.');
     return;
   }
 
+  if (!key) {
+    showError('Please enter your Anthropic API key.');
+    return;
+  }
+
+  apiKey = key;
   startChart(word);
 }
 
 submitBtn.addEventListener('click', handleSubmit);
-wordInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter') handleSubmit();
-});
+wordInput.addEventListener('keydown',   e => { if (e.key === 'Enter') handleSubmit(); });
+apiKeyInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit(); });
 
 // ── Error dialog ──────────────────────────────────────────────────────────────
 
@@ -205,13 +239,11 @@ function showError(msg) {
 function closeError() {
   errorDialog.classList.add('hidden');
   dialogOverlay.classList.add('hidden');
-  wordInput.focus();
 }
 
 dialogOkBtn.addEventListener('click', closeError);
 dialogCloseBtn.addEventListener('click', closeError);
 dialogOverlay.addEventListener('click', closeError);
-
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !errorDialog.classList.contains('hidden')) closeError();
 });
