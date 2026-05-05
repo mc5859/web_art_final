@@ -183,6 +183,11 @@ button.word-node:active {
   padding-left: 11px;
 }
 
+/* Subtree dimmed while rescrambling */
+button.word-node.rescrambling {
+  opacity: 0.4;
+}
+
 /* ── SVG connector lines ── */
 
 .connector-line {
@@ -264,6 +269,34 @@ button.word-node:active {
   line-height: 1.5;
   margin-bottom: 16px;
   text-align: left;
+}
+
+/* ── "I know what I want" button ── */
+
+#satisfied-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 50;
+  font-size: 10px;
+  min-width: auto;
+  padding: 3px 10px;
+  opacity: 0.7;
+}
+
+#satisfied-btn:hover {
+  opacity: 1;
+}
+
+/* ── Result dialog ── */
+
+.result-body p {
+  font-style: italic;
+  line-height: 1.6;
+  text-align: center;
+  font-size: 12px;
+  margin-bottom: 16px;
+  color: #000080;
 }
 
 .hidden {
