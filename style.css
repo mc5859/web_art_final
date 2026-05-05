@@ -22,7 +22,6 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0;
   z-index: 10;
   background: #f5f0d8;
   transition: opacity 0.4s ease;
@@ -112,15 +111,14 @@ h1 {
   padding: 4px 13px 2px 15px;
 }
 
-/* ── Chart container (sized + fixed by JS on submit) ── */
+/* ── Chart container ── */
 
 #chart-container {
   position: fixed;
   top: 0;
   left: 0;
-  /* width/height set by JS */
   overflow: hidden;
-  display: none; /* shown by JS */
+  display: none;
 }
 
 #lines-svg {
@@ -146,6 +144,7 @@ h1 {
   font-size: 11px;
   color: #000;
   animation: nodeAppear 0.15s ease-in both;
+  transition: font-size 0.3s ease, font-weight 0.3s ease;
 }
 
 @keyframes nodeAppear {
@@ -153,7 +152,6 @@ h1 {
   to   { opacity: 1; }
 }
 
-/* Root node: sunken panel */
 .root-node {
   background: #c0c0c0;
   border: 2px solid;
@@ -162,7 +160,6 @@ h1 {
   cursor: default;
 }
 
-/* Child nodes: always-raised buttons, no click state shown */
 button.word-node {
   background: #c0c0c0;
   border: 2px solid;
@@ -175,7 +172,6 @@ button.word-node:hover {
   background: #d4d0c8;
 }
 
-/* Active press feel only while physically holding down */
 button.word-node:active {
   border-color: #808080 #ffffff #ffffff #808080;
   box-shadow: none;
@@ -183,12 +179,42 @@ button.word-node:active {
   padding-left: 11px;
 }
 
-/* Subtree dimmed while rescrambling */
+/* Subtree shown as loading during rescramble */
 button.word-node.rescrambling {
-  opacity: 0.4;
+  opacity: 0.35;
+  cursor: wait;
 }
 
-/* ── SVG connector lines ── */
+/* Dead end — terminal node, no interaction */
+.dead-end-node {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: #b0a090;
+  cursor: default;
+  font-size: 16px;
+  letter-spacing: 2px;
+}
+
+/* ── Ghost traces (old words fading out behind new ones) ── */
+
+.word-ghost {
+  position: absolute;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  color: #a09888;
+  pointer-events: none;
+  opacity: 0.5;
+  transition: opacity 1.4s ease;
+  z-index: 0;
+  white-space: nowrap;
+}
+
+/* ── SVG lines ── */
 
 .connector-line {
   fill: none;
@@ -196,12 +222,11 @@ button.word-node.rescrambling {
   stroke-width: 1;
 }
 
-/* Dotted line connecting two nodes that share the same word */
 .word-link-line {
   stroke: #000080;
   stroke-width: 1;
   stroke-dasharray: 4 3;
-  opacity: 0.65;
+  opacity: 0.55;
 }
 
 /* ── Win98 error dialog ── */
@@ -271,7 +296,7 @@ button.word-node.rescrambling {
   text-align: left;
 }
 
-/* ── "I know what I want" button ── */
+/* ── "I know what I want" button — fades in after first word-link ── */
 
 #satisfied-btn {
   position: absolute;
@@ -281,22 +306,18 @@ button.word-node.rescrambling {
   font-size: 10px;
   min-width: auto;
   padding: 3px 10px;
-  opacity: 0.7;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 1.8s ease;
 }
 
-#satisfied-btn:hover {
+#satisfied-btn.visible {
+  opacity: 0.6;
+  pointer-events: auto;
+}
+
+#satisfied-btn.visible:hover {
   opacity: 1;
-}
-
-/* ── Result dialog ── */
-
-.result-body p {
-  font-style: italic;
-  line-height: 1.6;
-  text-align: center;
-  font-size: 12px;
-  margin-bottom: 16px;
-  color: #000080;
 }
 
 .hidden {

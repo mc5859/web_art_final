@@ -9,27 +9,25 @@ const errorDialog    = document.getElementById('error-dialog');
 const dialogMsg      = document.getElementById('dialog-message');
 const dialogOkBtn    = document.getElementById('dialog-ok-btn');
 const dialogCloseBtn = document.getElementById('dialog-close-btn');
-const resultDialog   = document.getElementById('result-dialog');
-const resultText     = document.getElementById('result-text');
-const resultOkBtn    = document.getElementById('result-ok-btn');
-const resultCloseBtn = document.getElementById('result-close-btn');
 
-// ── Layout constants ──────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const NODE_W   = 100;
-const NODE_H   = 28;
-const V_GAP    = 55;
-const H_SPREAD = 80;
+const NODE_W          = 100;
+const NODE_H          = 28;
+const V_GAP           = 55;
+const H_SPREAD        = 80;
+const DEAD_END_CHANCE = 1 / 20;  // per-word, per expand only
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-const nodes     = new Map();   // id → node object
-const wordLinks = new Map();   // `${minId}-${maxId}` → SVG <line> element
+const nodes     = new Map();   // id → node
+const wordLinks = new Map();   // `${minId}-${maxId}` → SVG <line>
 
-let nextId  = 0;
-let apiKey  = '';
-let canvasW = 0;
-let canvasH = 0;
+let nextId            = 0;
+let apiKey            = '';
+let canvasW           = 0;
+let canvasH           = 0;
+let firstLinkMade     = false;
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
@@ -56,7 +54,6 @@ function playThump() {
     osc.type = 'sine';
     osc.frequency.setValueAtTime(85, now);
     osc.frequency.exponentialRampToValueAtTime(32, now + 0.14);
-
     gain.gain.setValueAtTime(0.42, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
 
@@ -68,10 +65,8 @@ function playThump() {
 // ── Collision detection ───────────────────────────────────────────────────────
 
 function hasOverlap(cx, cy) {
-  const padX = NODE_W + 6;
-  const padY = NODE_H + 6;
   for (const n of nodes.values()) {
-    if (Math.abs(cx - n.cx) < padX && Math.abs(cy - n.cy) < padY) return true;
+    if (Math.abs(cx - n.cx) < NODE_W + 6 && Math.abs(cy - n.cy) < NODE_H + 6) return true;
   }
   return false;
 }
@@ -86,28 +81,22 @@ function clampToCanvas(cx, cy) {
 function findFreePosition(idealCx, idealCy) {
   const start = clampToCanvas(idealCx, idealCy);
   if (!hasOverlap(start.cx, start.cy)) return start;
-
   for (let r = 18; r <= 500; r += 18) {
     for (let deg = 0; deg < 360; deg += 12) {
-      const rad = deg * Math.PI / 180;
-      const { cx, cy } = clampToCanvas(
-        idealCx + r * Math.cos(rad),
-        idealCy + r * Math.sin(rad)
-      );
+      const rad      = deg * Math.PI / 180;
+      const { cx, cy } = clampToCanvas(idealCx + r * Math.cos(rad), idealCy + r * Math.sin(rad));
       if (!hasOverlap(cx, cy)) return { cx, cy };
     }
   }
-
   return start;
 }
 
-// ── SVG: tree connectors ──────────────────────────────────────────────────────
+// ── SVG helpers ───────────────────────────────────────────────────────────────
 
 function drawConnector(parent, childCx, childCy) {
-  const x1 = parent.cx,  y1 = parent.cy + NODE_H;
-  const x2 = childCx,    y2 = childCy;
+  const x1 = parent.cx, y1 = parent.cy + NODE_H;
+  const x2 = childCx,   y2 = childCy;
   const my = (y1 + y2) / 2;
-
   const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
   path.setAttribute('d', `M ${x1} ${y1} C ${x1} ${my}, ${x2} ${my}, ${x2} ${y2}`);
   path.setAttribute('class', 'connector-line');
@@ -115,53 +104,90 @@ function drawConnector(parent, childCx, childCy) {
   return path;
 }
 
-// ── SVG: dotted word-match links ──────────────────────────────────────────────
-
 function drawWordLink(nodeA, nodeB) {
   const key = `${Math.min(nodeA.id, nodeB.id)}-${Math.max(nodeA.id, nodeB.id)}`;
   if (wordLinks.has(key)) return;
-
   const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
   line.setAttribute('x1', nodeA.cx);
   line.setAttribute('y1', nodeA.cy + NODE_H / 2);
   line.setAttribute('x2', nodeB.cx);
   line.setAttribute('y2', nodeB.cy + NODE_H / 2);
   line.setAttribute('class', 'word-link-line');
-  svg.insertBefore(line, svg.firstChild); // behind everything
+  svg.insertBefore(line, svg.firstChild);
   wordLinks.set(key, line);
+
+  if (!firstLinkMade) {
+    firstLinkMade = true;
+    const btn = document.getElementById('satisfied-btn');
+    if (btn) btn.classList.add('visible');
+  }
 }
 
 function removeWordLinksForNode(id) {
   for (const [key, el] of wordLinks) {
     const [a, b] = key.split('-').map(Number);
-    if (a === id || b === id) {
-      el.remove();
-      wordLinks.delete(key);
-    }
+    if (a === id || b === id) { el.remove(); wordLinks.delete(key); }
   }
 }
 
 function checkWordLinks(node) {
+  if (node.isDeadEnd) return;
   const word = node.word.toLowerCase();
   for (const n of nodes.values()) {
-    if (n.id !== node.id && n.word.toLowerCase() === word) {
+    if (n.id !== node.id && !n.isDeadEnd && n.word.toLowerCase() === word) {
       drawWordLink(n, node);
     }
   }
 }
 
-// ── Node lifecycle ────────────────────────────────────────────────────────────
+// ── Word weight ───────────────────────────────────────────────────────────────
+
+function recomputeAllWeights() {
+  const counts = new Map();
+  for (const n of nodes.values()) {
+    if (n.isDeadEnd) continue;
+    const w = n.word.toLowerCase();
+    counts.set(w, (counts.get(w) || 0) + 1);
+  }
+  for (const n of nodes.values()) {
+    if (n.isDeadEnd) continue;
+    const c = counts.get(n.word.toLowerCase()) || 1;
+    if (c >= 4)      { n.el.style.fontWeight = 'bold'; n.el.style.fontSize = '13px'; }
+    else if (c >= 3) { n.el.style.fontWeight = 'bold'; n.el.style.fontSize = '12px'; }
+    else if (c >= 2) { n.el.style.fontWeight = '600';  n.el.style.fontSize = '';     }
+    else             { n.el.style.fontWeight = '';      n.el.style.fontSize = '';     }
+  }
+}
+
+// ── Ghost traces ──────────────────────────────────────────────────────────────
+
+function createGhost(node, oldWord) {
+  if (!oldWord || oldWord === '…' || oldWord === '—') return;
+  const ghost = document.createElement('div');
+  ghost.className   = 'word-ghost';
+  ghost.textContent = oldWord;
+  ghost.style.left  = (node.cx - NODE_W / 2) + 'px';
+  ghost.style.top   = node.cy + 'px';
+  ghost.style.width = NODE_W + 'px';
+  container.appendChild(ghost);
+  // Double rAF ensures initial opacity renders before transition kicks in
+  requestAnimationFrame(() => requestAnimationFrame(() => { ghost.style.opacity = '0'; }));
+  setTimeout(() => ghost.remove(), 1600);
+}
+
+// ── Node creation ─────────────────────────────────────────────────────────────
 
 function createNode(word, parentId, idealCx, idealCy) {
   const isRoot     = parentId === null;
-  const { cx, cy } = isRoot
-    ? clampToCanvas(idealCx, idealCy)
-    : findFreePosition(idealCx, idealCy);
-
-  const id = nextId++;
+  const isDeadEnd  = word === '—';
+  const { cx, cy } = isRoot ? clampToCanvas(idealCx, idealCy) : findFreePosition(idealCx, idealCy);
+  const id         = nextId++;
 
   const el = document.createElement(isRoot ? 'div' : 'button');
-  el.className   = isRoot ? 'word-node root-node' : 'word-node';
+  if (isDeadEnd)  el.className = 'word-node dead-end-node';
+  else if (isRoot) el.className = 'word-node root-node';
+  else             el.className = 'word-node';
+
   el.textContent = word;
   el.style.left  = (cx - NODE_W / 2) + 'px';
   el.style.top   = cy + 'px';
@@ -171,34 +197,24 @@ function createNode(word, parentId, idealCx, idealCy) {
   let connectorPath = null;
   if (!isRoot) {
     connectorPath = drawConnector(nodes.get(parentId), cx, cy);
-    el.addEventListener('click', () => handleNodeClick(id));
+    if (!isDeadEnd) el.addEventListener('click', () => handleNodeClick(id));
   }
 
-  const node = {
-    id, word, parentId,
-    children: [],
-    cx, cy, el,
-    expanded:     false,
-    rescrambling: false,
-    connectorPath,
-  };
+  const node = { id, word, parentId, children: [], cx, cy, el, expanded: false, rescrambling: false, connectorPath, isDeadEnd };
   nodes.set(id, node);
-
   if (parentId !== null) nodes.get(parentId).children.push(id);
-  checkWordLinks(node);
+
+  if (!isDeadEnd) checkWordLinks(node);
+  recomputeAllWeights();
   return node;
 }
 
-// Collect all descendant IDs (not including nodeId itself)
 function getDescendantIds(nodeId) {
   const result = [];
   function collect(id) {
     const n = nodes.get(id);
     if (!n) return;
-    for (const cid of n.children) {
-      result.push(cid);
-      collect(cid);
-    }
+    for (const cid of n.children) { result.push(cid); collect(cid); }
   }
   collect(nodeId);
   return result;
@@ -208,14 +224,10 @@ function getDescendantIds(nodeId) {
 
 function handleNodeClick(id) {
   const node = nodes.get(id);
-  if (!node || node.rescrambling) return;
+  if (!node || node.rescrambling || node.isDeadEnd) return;
   playThump();
-
-  if (!node.expanded) {
-    expandNode(id);
-  } else {
-    rescrambleNode(id);
-  }
+  if (!node.expanded) expandNode(id);
+  else                rescrambleNode(id);
 }
 
 // ── Claude API ────────────────────────────────────────────────────────────────
@@ -249,19 +261,15 @@ async function fetchBranches(word) {
       }],
     }),
   });
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `API error ${res.status}`);
   }
-
   const data  = await res.json();
   const text  = data.content[0].text.trim();
   const match = text.match(/\[.*?\]/s);
   if (!match) throw new Error('Unexpected response from API.');
-
-  const words = JSON.parse(match[0]);
-  return words.filter(w => typeof w === 'string' && /^[a-zA-Z]+$/.test(w)).slice(0, 2);
+  return JSON.parse(match[0]).filter(w => typeof w === 'string' && /^[a-zA-Z]+$/.test(w)).slice(0, 2);
 }
 
 // ── Expand (first click) ──────────────────────────────────────────────────────
@@ -284,8 +292,11 @@ async function expandNode(id) {
       return;
     }
 
-    createNode(words[0], id, node.cx - H_SPREAD, node.cy + V_GAP);
-    createNode(words[1], id, node.cx + H_SPREAD, node.cy + V_GAP);
+    // Randomly apply dead end to one word (~1 in 20 chance per word)
+    const final = words.map(w => Math.random() < DEAD_END_CHANCE ? '—' : w);
+
+    createNode(final[0], id, node.cx - H_SPREAD, node.cy + V_GAP);
+    createNode(final[1], id, node.cx + H_SPREAD, node.cy + V_GAP);
 
   } catch (err) {
     node.el.textContent = orig;
@@ -294,23 +305,33 @@ async function expandNode(id) {
   }
 }
 
-// ── Rescramble: preserve structure, replace all words below ──────────────────
+// ── Rescramble ────────────────────────────────────────────────────────────────
 
-// Recursively fetch new words for every non-leaf node and update its children.
-// Structure (positions, connectors) is preserved — only text changes.
+// Walk the subtree, replacing every non-dead-end child word via API cascade.
+// Positions and connectors are untouched — only text changes.
 async function rescrambleSubtreeWords(nodeId) {
   const node = nodes.get(nodeId);
-  if (!node || node.children.length === 0) return; // leaf — nothing to update
+  if (!node || node.children.length === 0) return;
 
   const words = await fetchBranches(node.word);
   if (words.length < 2) throw new Error('Not enough words returned');
 
   const [c1, c2] = node.children.map(id => nodes.get(id));
 
-  c1.word = words[0];
-  c1.el.textContent = words[0];
-  c2.word = words[1];
-  c2.el.textContent = words[1];
+  // c1
+  if (!c1.isDeadEnd) {
+    c1.word = words[0];
+    c1.el.textContent = words[0];
+    c1.el.classList.remove('rescrambling');
+    checkWordLinks(c1);
+  }
+  // c2
+  if (!c2.isDeadEnd) {
+    c2.word = words[1];
+    c2.el.textContent = words[1];
+    c2.el.classList.remove('rescrambling');
+    checkWordLinks(c2);
+  }
 
   // Descend both branches in parallel
   await Promise.all([
@@ -327,31 +348,23 @@ async function rescrambleNode(id) {
   const orig        = node.word;
   const descendants = getDescendantIds(id);
 
-  // Dim the subtree and show loading on the clicked node
-  node.el.textContent = orig + '…';
+  // Show '…' on every mutable descendant + create ghosts of their current words
   descendants.forEach(nid => {
     const n = nodes.get(nid);
-    if (n) n.el.classList.add('rescrambling');
+    if (!n || n.isDeadEnd) return;
+    createGhost(n, n.word);
+    removeWordLinksForNode(nid);
+    n.el.textContent = '…';
+    n.el.classList.add('rescrambling');
   });
 
-  try {
-    // Strip existing word-links for all descendants
-    descendants.forEach(nid => removeWordLinksForNode(nid));
+  node.el.textContent = orig + '…';
 
-    // Recursively replace all words while keeping positions/connectors
+  try {
     await rescrambleSubtreeWords(id);
 
     node.el.textContent = orig;
-
-    // Re-check word-links for all updated descendants
-    descendants.forEach(nid => {
-      const n = nodes.get(nid);
-      if (n) {
-        n.el.classList.remove('rescrambling');
-        checkWordLinks(n);
-      }
-    });
-
+    recomputeAllWeights();
     node.rescrambling = false;
 
   } catch (err) {
@@ -367,53 +380,119 @@ async function rescrambleNode(id) {
 
 // ── "I know what I want" ──────────────────────────────────────────────────────
 
-function addSatisfiedButton() {
-  const btn = document.createElement('button');
-  btn.id          = 'satisfied-btn';
-  btn.className   = 'win98-btn';
-  btn.textContent = 'I know what I want →';
-  btn.addEventListener('click', handleSatisfied);
-  container.appendChild(btn);
+function getDuplicateWords() {
+  const counts = new Map();
+  for (const n of nodes.values()) {
+    if (n.isDeadEnd) continue;
+    const w = n.word.toLowerCase();
+    counts.set(w, (counts.get(w) || 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, c]) => c >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .map(([w]) => w);
+}
+
+// Dots cascade level by level from root to leaves
+function animateScan() {
+  return new Promise(resolve => {
+    const rootId = [...nodes.keys()][0];
+    const levels = [];
+    let front = [rootId];
+    while (front.length > 0) {
+      levels.push([...front]);
+      const next = [];
+      front.forEach(id => {
+        const n = nodes.get(id);
+        if (n) n.children.forEach(cid => next.push(cid));
+      });
+      front = next;
+    }
+
+    let i = 0;
+    const DELAY = 90;
+
+    function step() {
+      if (i >= levels.length) { setTimeout(resolve, 350); return; }
+      levels[i].forEach(id => {
+        const n = nodes.get(id);
+        if (!n) return;
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        dot.setAttribute('cx', n.cx);
+        dot.setAttribute('cy', n.cy + NODE_H / 2);
+        dot.setAttribute('r', n.isDeadEnd ? 2 : 4);
+        dot.setAttribute('fill', '#000080');
+        dot.setAttribute('opacity', '0.85');
+        svg.appendChild(dot);
+        setTimeout(() => {
+          dot.style.transition = 'opacity 0.3s';
+          dot.style.opacity = '0';
+          setTimeout(() => dot.remove(), 300);
+        }, DELAY * 1.4);
+      });
+      i++;
+      setTimeout(step, DELAY);
+    }
+    step();
+  });
+}
+
+async function buildSentence(dupWords) {
+  const leafWords = [...nodes.values()]
+    .filter(n => n.children.length === 0 && n.parentId !== null && !n.isDeadEnd)
+    .map(n => n.word.toLowerCase());
+
+  const otherWords = [...new Set(leafWords.filter(w => !dupWords.includes(w)))];
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 70,
+      messages: [{
+        role: 'user',
+        content:
+          `The most recurring words from someone's desire map: ${dupWords.join(', ')}.\n` +
+          (otherWords.length ? `Other words at the edges: ${otherWords.join(', ')}.\n` : '') +
+          `\nWrite one raw, blunt sentence starting with "I want". ` +
+          `Prioritize the recurring words. Make it feel true, crude, and a little shameful. ` +
+          `It can be contradictory and doesn't have to be grammatically perfect. Under 25 words.`,
+      }],
+    }),
+  });
+  const data = await res.json();
+  return data.content[0].text.trim();
 }
 
 async function handleSatisfied() {
-  const leaves = [...nodes.values()].filter(n => n.children.length === 0 && n.parentId !== null);
-  if (leaves.length < 2) return;
-
   const btn = document.getElementById('satisfied-btn');
-  btn.textContent = 'thinking…';
+  btn.textContent = '…';
   btn.disabled    = true;
 
+  const dupWords = getDuplicateWords();
+
   try {
-    const leafWords = leaves.map(n => n.word);
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 80,
-        messages: [{
-          role: 'user',
-          content:
-            `Someone spent a long time trying to clarify what they want. ` +
-            `After infinite questions, the words they are left holding are: ${leafWords.join(', ')}.\n\n` +
-            `Write a single sentence starting with "I want" that contains all of these desires at once. ` +
-            `It should be contradictory, impossible, and quietly devastating — ` +
-            `revealing that they still don't truly know what they want. Under 40 words.`,
-        }],
-      }),
-    });
+    let sentence;
+    if (wordLinks.size === 1) {
+      // Single connection — short, stark sentence
+      const firstKey = [...wordLinks.keys()][0];
+      const nodeId   = parseInt(firstKey.split('-')[0], 10);
+      const word     = nodes.get(nodeId)?.word || dupWords[0] || 'it';
+      await animateScan();
+      sentence = `I want ${word} love.`;
+    } else {
+      // Run animation and API fetch in parallel
+      const [s] = await Promise.all([buildSentence(dupWords), animateScan()]);
+      sentence = s;
+    }
 
-    const data     = await res.json();
-    const sentence = data.content[0].text.trim();
-
-    resultText.textContent = sentence;
-    resultDialog.classList.remove('hidden');
+    window.alert(sentence);
 
   } catch (err) {
     showError('API error: ' + err.message);
@@ -421,6 +500,15 @@ async function handleSatisfied() {
     btn.textContent = 'I know what I want →';
     btn.disabled    = false;
   }
+}
+
+function addSatisfiedButton() {
+  const btn       = document.createElement('button');
+  btn.id          = 'satisfied-btn';
+  btn.className   = 'win98-btn';
+  btn.textContent = 'I know what I want →';
+  btn.addEventListener('click', handleSatisfied);
+  container.appendChild(btn);
 }
 
 // ── Start chart ───────────────────────────────────────────────────────────────
@@ -459,11 +547,7 @@ function handleSubmit() {
       : 'Only letters allowed — no spaces, numbers, or symbols.');
     return;
   }
-
-  if (!key) {
-    showError('Please enter your Anthropic API key.');
-    return;
-  }
+  if (!key) { showError('Please enter your Anthropic API key.'); return; }
 
   apiKey = key;
   startChart(word);
@@ -490,19 +574,6 @@ function closeError() {
 dialogOkBtn.addEventListener('click', closeError);
 dialogCloseBtn.addEventListener('click', closeError);
 dialogOverlay.addEventListener('click', closeError);
-
-// ── Result dialog ─────────────────────────────────────────────────────────────
-
-function closeResult() {
-  resultDialog.classList.add('hidden');
-}
-
-resultOkBtn.addEventListener('click', closeResult);
-resultCloseBtn.addEventListener('click', closeResult);
-
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    if (!errorDialog.classList.contains('hidden'))  closeError();
-    if (!resultDialog.classList.contains('hidden')) closeResult();
-  }
+  if (e.key === 'Escape' && !errorDialog.classList.contains('hidden')) closeError();
 });
