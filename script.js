@@ -44,11 +44,11 @@ function fadeInRain() {
   if (!audio) return;
   audio.volume = 0;
   audio.play().catch(() => {}); // silently skip if browser blocks autoplay
-  const TARGET = 0.28;
+  const TARGET = 0.50;
   const id = setInterval(() => {
     if (audio.volume >= TARGET) { clearInterval(id); return; }
-    audio.volume = Math.min(audio.volume + 0.004, TARGET);
-  }, 120); // reaches 0.28 over ~8 seconds
+    audio.volume = Math.min(audio.volume + 0.007, TARGET);
+  }, 120); // reaches 0.50 over ~8 seconds
 }
 
 // Soft muffled thump on node click
@@ -64,7 +64,7 @@ function playThump() {
     osc.type = 'sine';
     osc.frequency.setValueAtTime(85, now);
     osc.frequency.exponentialRampToValueAtTime(32, now + 0.14);
-    gain.gain.setValueAtTime(0.42, now);
+    gain.gain.setValueAtTime(0.22, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
     osc.start(now); osc.stop(now + 0.24);
   } catch (_) {}
@@ -81,10 +81,10 @@ function playConnectionSound() {
     lpf.type = 'lowpass'; lpf.frequency.value = 500; lpf.Q.value = 1.5;
     osc.connect(lpf); lpf.connect(gain); gain.connect(ctx.destination);
     osc.type = 'triangle';
-    osc.frequency.setValueAtTime(260, now);
-    osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
-    gain.gain.setValueAtTime(0.16, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+    osc.frequency.setValueAtTime(180, now);
+    osc.frequency.exponentialRampToValueAtTime(300, now + 0.12);
+    gain.gain.setValueAtTime(0.13, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
     osc.start(now); osc.stop(now + 0.38);
   } catch (_) {}
 }
@@ -318,7 +318,7 @@ async function fetchBranches(word, ancestorWords = []) {
 async function fetchRescrambledTree(tree, rootWord) {
   const data = await anthropicPost({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 700,
+    max_tokens: 1500,
     messages: [{
       role: 'user',
       content:
@@ -522,7 +522,7 @@ async function handleSatisfied() {
   try {
     const sentence = buildSentence();
     await animateScan();
-    window.alert(sentence);
+    showResult(sentence);
   } catch (err) {
     showError('Something went wrong.');
   } finally {
@@ -558,7 +558,7 @@ function startChart(word) {
   addSatisfiedButton();
   fadeInRain();
 
-  const root = createNode(word, null, canvasW / 2, 50);
+  const root = createNode(word, null, canvasW / 2, 145);
   expandNode(root.id);
 }
 
@@ -593,4 +593,29 @@ dialogCloseBtn.addEventListener('click', closeError);
 dialogOverlay.addEventListener('click', closeError);
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !errorDialog.classList.contains('hidden')) closeError();
+});
+
+// ── Result dialog ("I know what I want") ──────────────────────────────────────
+
+const resultDialog    = document.getElementById('result-dialog');
+const resultMsg       = document.getElementById('result-message');
+const resultOkBtn     = document.getElementById('result-ok-btn');
+const resultCloseBtn  = document.getElementById('result-close-btn');
+const resultOverlay   = document.getElementById('result-overlay');
+
+function showResult(msg) {
+  resultMsg.textContent = msg;
+  resultDialog.classList.remove('hidden');
+  resultOverlay.classList.remove('hidden');
+  resultOkBtn.focus();
+}
+function closeResult() {
+  resultDialog.classList.add('hidden');
+  resultOverlay.classList.add('hidden');
+}
+resultOkBtn.addEventListener('click', closeResult);
+resultCloseBtn.addEventListener('click', closeResult);
+resultOverlay.addEventListener('click', closeResult);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !resultDialog.classList.contains('hidden')) closeResult();
 });
