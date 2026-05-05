@@ -1,4 +1,4 @@
-const WORKER_URL = 'https://desireproxy.markc6820.workers.dev';
+const WORKER_URL = 'https://newworker.markc6820.workers.dev';
 
 const promptArea = document.getElementById('prompt-area');
 const wordInput  = document.getElementById('word-input');
