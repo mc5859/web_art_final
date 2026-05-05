@@ -1,5 +1,5 @@
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-let apiKey = '';
+const apiKey = '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';
 
 const promptArea = document.getElementById('prompt-area');
 const wordInput  = document.getElementById('word-input');
@@ -571,14 +571,11 @@ function startChart(word) {
 // ── Input handling ────────────────────────────────────────────────────────────
 
 function handleSubmit() {
-  const key = document.getElementById('key-input').value.trim();
-  if (!key) { showError('Please enter your Anthropic API key.'); return; }
   const word = wordInput.value.trim();
   if (!/^[a-zA-Z]+$/.test(word)) {
     showError(word.length === 0 ? 'Please enter a word before clicking OK.' : 'Only letters allowed — no spaces, numbers, or symbols.');
     return;
   }
-  apiKey = key;
   startChart(word);
 }
 
