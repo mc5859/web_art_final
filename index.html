@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What is it that you want?</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <div id="prompt-area">
+    <h1>What is it that you want?</h1>
+    <div class="input-row">
+      <input
+        type="text"
+        id="word-input"
+        placeholder="one word"
+        maxlength="40"
+        autocomplete="off"
+        spellcheck="false"
+      >
+      <button id="submit-btn" class="win98-btn">OK</button>
+    </div>
+  </div>
+
+  <div id="chart-container">
+    <svg id="lines-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+  <div id="dialog-overlay" class="hidden"></div>
+  <div id="error-dialog" class="win98-dialog hidden" role="alertdialog" aria-modal="true">
+    <div class="dialog-titlebar">
+      <span>Error</span>
+      <button class="dialog-close-btn" id="dialog-close-btn">&#x2715;</button>
+    </div>
+    <div class="dialog-body">
+      <p id="dialog-message">Please enter one word using only letters.</p>
+      <button class="win98-btn" id="dialog-ok-btn">OK</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

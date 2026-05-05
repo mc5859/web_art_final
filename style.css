@@ -1,0 +1,251 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: #f5f0d8;
+  font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  color: #000;
+  min-height: 100vh;
+  overflow-x: auto;
+}
+
+/* ── Prompt area ── */
+
+#prompt-area {
+  text-align: center;
+  padding: 48px 20px 36px;
+  transition: opacity 0.4s ease;
+  position: relative;
+  z-index: 10;
+}
+
+#prompt-area.submitted {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+h1 {
+  font-size: 15px;
+  font-weight: bold;
+  letter-spacing: 0.3px;
+  margin-bottom: 22px;
+  color: #000;
+}
+
+.input-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+#word-input {
+  font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  padding: 3px 5px;
+  width: 170px;
+  background: #fff;
+  color: #000;
+  outline: none;
+  /* Win98 sunken/inset border */
+  border: 2px solid;
+  border-color: #808080 #dfdfdf #dfdfdf #808080;
+}
+
+#word-input:disabled {
+  background: #c0c0c0;
+  color: #808080;
+}
+
+/* ── Win98 raised button ── */
+
+.win98-btn {
+  font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  padding: 3px 14px;
+  min-width: 75px;
+  background: #c0c0c0;
+  color: #000;
+  cursor: pointer;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  /* outer dark shadow */
+  box-shadow: 1px 1px 0 #000;
+  user-select: none;
+}
+
+.win98-btn:active {
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: none;
+  padding: 4px 13px 2px 15px;
+}
+
+.win98-btn:disabled {
+  color: #808080;
+  cursor: default;
+}
+
+/* ── Chart container ── */
+
+#chart-container {
+  position: relative;
+  /* JS sets width/height dynamically */
+  min-width: 100vw;
+  min-height: 300px;
+}
+
+#lines-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+/* ── Word nodes ── */
+
+.word-node {
+  position: absolute;
+  height: 28px;
+  min-width: 90px;
+  max-width: 150px;
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
+  font-size: 11px;
+  color: #000;
+  /* fade in */
+  animation: nodeAppear 0.18s ease-in both;
+}
+
+@keyframes nodeAppear {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Root node: displayed as a sunken (inset) panel */
+.root-node {
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #808080 #ffffff #ffffff #808080;
+  font-weight: bold;
+  cursor: default;
+}
+
+/* Child nodes: raised clickable buttons */
+button.word-node {
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: 1px 1px 0 #000;
+  cursor: pointer;
+}
+
+button.word-node:hover:not(:disabled) {
+  background: #d4d0c8;
+}
+
+button.word-node:active:not(:disabled) {
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: none;
+  padding-top: 1px;
+  padding-left: 11px;
+}
+
+button.word-node:disabled,
+button.word-node.expanded {
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: none;
+  color: #808080;
+  cursor: default;
+  background: #c0c0c0;
+}
+
+/* ── SVG connector lines ── */
+
+.connector-line {
+  fill: none;
+  stroke: #808080;
+  stroke-width: 1;
+}
+
+/* ── Win98 error dialog ── */
+
+#dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  /* transparent click-catcher */
+}
+
+.win98-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 300px;
+  background: #c0c0c0;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: 2px 2px 0 #000;
+  z-index: 1000;
+}
+
+.dialog-titlebar {
+  background: #000080;
+  color: #fff;
+  padding: 3px 6px 3px 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.dialog-close-btn {
+  font-family: 'Tahoma', 'MS Sans Serif', Arial, sans-serif;
+  font-size: 9px;
+  background: #c0c0c0;
+  color: #000;
+  border: 2px solid;
+  border-color: #ffffff #808080 #808080 #ffffff;
+  box-shadow: 1px 1px 0 #000;
+  cursor: pointer;
+  width: 16px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  line-height: 1;
+}
+
+.dialog-close-btn:active {
+  border-color: #808080 #ffffff #ffffff #808080;
+  box-shadow: none;
+}
+
+.dialog-body {
+  padding: 18px 16px 14px;
+  text-align: center;
+}
+
+.dialog-body p {
+  font-size: 11px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.hidden {
+  display: none !important;
+}
