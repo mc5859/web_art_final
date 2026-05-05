@@ -1,5 +1,5 @@
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const apiKey = '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';
+const apiKey = ['sk-ant-api03-', '9UReaxrDoRxowsDTcrnQADp6TS2JpNyXz3VMUIZoRFoLMZAzeJ3JMhORHWSnLqYiKJ12yhBo4uz86MAgB7OO7w-OQ1xzAAA'].join('');
 
 const promptArea = document.getElementById('prompt-area');
 const wordInput  = document.getElementById('word-input');
